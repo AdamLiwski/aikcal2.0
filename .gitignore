@@ -1,0 +1,47 @@
+# Środowisko wirtualne Python
+.venv/
+venv/
+/venv/
+__pypackages__/
+
+# Pliki cache Pythona
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Pliki bazy danych
+# Nigdy nie wysyłaj pliku bazy na repozytorium!
+aikcal.db
+*.db
+*.sqlite
+*.sqlite3
+
+# Pliki z sekretnymi kluczami
+# Ten plik MUSI być ignorowany, aby Twoje klucze API były bezpieczne
+.env
+.env.*
+secrets.toml
+
+# Pliki generowane przez skrypty i dane tymczasowe
+# Foldery z danymi JSON, które generujesz
+baza/
+baza2/
+bazadan/
+dane_zywnosciowe/
+
+# Pliki wynikowe i tymczasowe ze skryptów
+*.json
+*.json.tmp
+brakujace_produkty.json
+master_dane.json
+master_dane_wzbogacone.json
+master_dane_wzbogacone2.json
+nohup.out
+
+# Pliki generowane przez IDE (np. VS Code)
+.vscode/
+.idea/
+
+# Pliki systemowe
+.DS_Store
+Thumbs.db

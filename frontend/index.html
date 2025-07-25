@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>AIKcal - Inteligentny Dziennik Kalorii</title>
+    <link rel="stylesheet" href="/style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/feather-icons"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+</head>
+<body>
+    <div id="app-container" class="hidden">
+        <header>
+            <div id="header-title" class="logo">AIKcal</div>
+            <div class="header-controls">
+                <button id="settings-btn" class="icon-btn" aria-label="Ustawienia"><i data-feather="settings"></i></button>
+            </div>
+        </header>
+
+        <main id="main-content">
+            <!-- Kolejność widoków nie ma znaczenia, JS zarządza ich pokazywaniem -->
+            <div class="view" data-view-name="analysis">
+                <div class="analysis-header">
+                    <h2>Analiza</h2>
+                    <div class="date-range-controls"> <!-- NOWY KONTENER DLA UŁADU -->
+                        <div class="timeframe-switcher">
+                            <button class="secondary-btn timeframe-btn" data-range="7">7 Dni</button>
+                            <button class="secondary-btn timeframe-btn" data-range="30">30 Dni</button>
+                            <button class="secondary-btn timeframe-btn" data-range="90">90 Dni</button>
+                        </div>
+                        <div class="date-range-selector">
+                            <label for="analysis-start-date">Od:</label>
+                            <input type="date" id="analysis-start-date">
+                            <label for="analysis-end-date">Do:</label>
+                            <input type="date" id="analysis-end-date">
+                        </div>
+                    </div>
+                    <button id="generate-analysis-btn" class="primary-btn generate-analysis-button">
+                        <i data-feather="cpu"></i>
+                        <span>Uruchom Analizę AI</span>
+                    </button>
+                </div>
+                <div id="analysis-content">
+                    <!-- Zawartość będzie renderowana dynamicznie przez JS -->
+                    <div id="ai-coach-container" class="card hidden">
+                        <h4><i data-feather="message-square"></i> Trener AI mówi...</h4>
+                        <p id="ai-coach-summary"></p>
+                    </div>
+                    <div id="macro-chart-container" class="card hidden">
+                        <h4>Rozkład Makroskładników</h4>
+                        <canvas id="macro-chart"></canvas>
+                    </div>
+                    <div id="weight-chart-container" class="card hidden">
+                        <h4>Zmiana Wagi</h4>
+                        <canvas id="weight-chart"></canvas>
+                    </div>
+                    <div id="workouts-summary-container" class="card hidden">
+                        <h4>Aktywność w wybranym okresie</h4>
+                        <p>Łączna liczba treningów: <strong id="total-workouts"></strong></p>
+                        <p>Łącznie spalone kalorie: <strong id="total-calories-burned"></strong> kcal</p>
+                    </div>
+                </div>
+            </div>
+            <div class="view active" data-view-name="dashboard"></div>
+            <div class="view" data-view-name="social"></div>
+            <div class="view" data-view-name="aiChef"></div>
+            <div class="view" data-view-name="chat"></div>
+        </main>
+
+        <nav class="bottom-nav">
+            <!-- START ZMIENIONEJ KOLEJNOŚCI MENU -->
+            <button class="nav-btn" data-view="analysis" aria-label="Analiza">
+                <i data-feather="bar-chart-2"></i>
+                <span>Analiza</span>
+            </button>
+            <button class="nav-btn" data-view="chat" aria-label="AI Trener">
+                <i data-feather="message-square"></i>
+                <span>AI Trener</span>
+            </button>
+            <button class="nav-btn active" data-view="dashboard" aria-label="Dziennik">
+                <i data-feather="home"></i>
+                <span>Dziennik</span>
+            </button>
+            <button class="nav-btn" data-view="aiChef" aria-label="AI Chef">
+                <i data-feather="cpu"></i>
+                <span>AI Chef</span>
+            </button>
+            <button class="nav-btn" data-view="social" aria-label="Społeczność">
+                <i data-feather="users"></i>
+                <span>Społeczność</span>
+            </button>
+            <!-- KONIEC ZMIENIONEJ KOLEJNOŚCI MENU -->
+        </nav>
+    </div>
+
+    <div id="auth-container">
+        <!-- Treść logowania/rejestracji generowana przez app.js -->
+        <div class="container" style="text-align: center; margin-top: 5rem;">
+            <h1>Witaj w AIKcal</h1>
+            <p>Zaloguj się, aby rozpocząć!</p>
+            
+            <a href="https://accounts.google.com/o/oauth2/v2/auth?client_id=877107890429-q1kiihn9vd95h1alg40p700hdbqvj5dq.apps.googleusercontent.com&redirect_uri=https://aikcallapp.click/api/auth/callback/google&response_type=code&scope=email%20profile&access_type=offline" class="btn" style="font-size: 1.2rem; padding: 1rem 2rem; background-color: #4285f4; color: white; text-decoration: none; border-radius: 6px;">
+                Zaloguj przez Google
+            </a>
+        </div>
+    </div>
+
+    <div id="calendar-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <!-- Przycisk zamykający modal kalendarza - przeniesiony dla lepszej dostępności -->
+            <button class="modal-close-btn icon-btn" aria-label="Zamknij kalendarz"><i data-feather="x"></i></button>
+            <div id="calendar-modal-body"></div>
+        </div>
+    </div>
+
+    <div id="add-meal-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <!-- Przycisk zamykający modal dodawania posiłku - przeniesiony dla lepszej dostępności -->
+            <button class="modal-close-btn icon-btn" aria-label="Zamknij dodawanie posiłku"><i data-feather="x"></i></button>
+            <h3 id="modal-title">Dodaj Posiłek</h3>
+            <div id="modal-body"></div>
+            <div class="modal-footer hidden">
+                <button id="add-selected-to-journal-btn" class="primary-btn"><i data-feather="check-circle"></i> Dodaj do dziennika</button>
+            </div>
+        </div>
+    </div>
+    
+    <div id="details-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <!-- Przycisk zamykający modal szczegółów - przeniesiony dla lepszej dostępności -->
+            <button class="modal-close-btn icon-btn" aria-label="Zamknij szczegóły"><i data-feather="x"></i></button>
+            <h3>Szczegóły Składników</h3>
+            <div id="details-modal-body"></div>
+        </div>
+    </div>
+
+    <div id="edit-meal-entry-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <button class="modal-close-btn icon-btn" aria-label="Zamknij edycję"><i data-feather="x"></i></button>
+            <h3 id="edit-modal-title">Edytuj Wpis</h3>
+            <div id="edit-meal-entry-modal-body">
+                <!-- Treść generowana przez JS -->
+            </div>
+            <div class="modal-footer">
+                <button id="save-edit-entry-btn" class="primary-btn"><i data-feather="save"></i> Zapisz zmiany</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="settings-modal" class="modal-overlay hidden">
+         <div class="modal-content large">
+            <!-- Przycisk zamykający modal ustawień - przeniesiony dla lepszej dostępności -->
+            <button class="modal-close-btn icon-btn" aria-label="Zamknij ustawienia"><i data-feather="x"></i></button>
+            <h3>Ustawienia</h3>
+            <div class="tabs">
+                <button class="tab-link active" data-tab="tab-profile">Profil</button>
+                <button class="tab-link" data-tab="tab-goals">Cele</button>
+                <button class="tab-link" data-tab="tab-tastes">Twoje Smaki</button>
+                <button class="tab-link" data-tab="tab-app">Aplikacja</button>
+            </div>
+            <div id="settings-body"></div>
+             <div class="modal-footer settings-footer">
+                <button id="save-settings-btn" class="primary-btn"><i data-feather="save"></i> Zapisz zmiany</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="loader" class="modal-overlay hidden"><div class="spinner"></div></div>
+    <div id="notification-bar" class="hidden"></div>
+    
+    <script src="/app.js?v=2"></script>
+</body>
+</html>
