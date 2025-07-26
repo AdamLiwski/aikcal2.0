@@ -170,11 +170,26 @@ async def _calculate_nutrients_for_dish(db: Session, dish: models.Dish, quantity
     final_nutrients = {key: round(val * scaling_factor, 1) for key, val in total_nutrients.items()}
     final_nutrients['calories'] = round(final_nutrients['calories'])
 
-    deconstruction_details = [{
-        "name": ing.product.name,
-        "quantity_grams": round(ing.weight_g * scaling_factor),
-        "calories": round(ing.product.nutrients.get("calories", 0) * (ing.weight_g * scaling_factor / 100.0)) if ing.product.nutrients else 0,
-    } for ing in dish.ingredients]
+    # --- POCZĄTEK ZMIANY ---
+    deconstruction_details = []
+    for ing in dish.ingredients:
+        if ing.product and ing.product.nutrients:
+            scaled_weight = ing.weight_g * scaling_factor
+            # Obliczamy współczynnik skalujący dla wartości odżywczych na podstawie przeskalowanej wagi składnika
+            factor = scaled_weight / 100.0
+            
+            details = {
+                "name": ing.product.name,
+                "quantity_grams": round(scaled_weight),
+                "calories": round(ing.product.nutrients.get("calories", 0) * factor),
+                "protein": round(ing.product.nutrients.get("protein", 0) * factor, 1),
+                "fat": round(ing.product.nutrients.get("fat", 0) * factor, 1),
+                "carbs": round(ing.product.nutrients.get("carbs", 0) * factor, 1),
+                # KLUCZOWY DODATEK: Przekazanie danych bazowych do frontendu
+                "nutrients_per_100g": ing.product.nutrients 
+            }
+            deconstruction_details.append(details)
+    # --- KONIEC ZMIANY ---
 
     aggregated_meal = {
         "name": f"{dish.name}",

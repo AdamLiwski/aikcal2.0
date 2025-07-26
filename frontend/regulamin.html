@@ -4,39 +4,71 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Regulamin - AIKcal</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        body { font-family: 'Inter', sans-serif; line-height: 1.6; max-width: 800px; margin: 2rem auto; padding: 1rem; }
-        h1, h2 { border-bottom: 1px solid #eee; padding-bottom: 0.5rem; margin-top: 1.5rem; }
-        a { color: #3b82f6; }
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .prose h2 {
+            border-bottom: 1px solid #e5e7eb;
+            padding-bottom: 0.5rem;
+            margin-top: 2rem;
+            margin-bottom: 1rem;
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+        .prose p {
+            line-height: 1.75;
+        }
+        .prose a {
+            color: #2563eb; /* blue-600 */
+            text-decoration: none;
+            font-weight: 500;
+        }
+        .prose a:hover {
+            text-decoration: underline;
+        }
     </style>
 </head>
-<body>
-    <h1>Regulamin Aplikacji AIKcal</h1>
-    <p>Ostatnia aktualizacja: 23.07.2025</p>
+<body class="bg-gray-50 text-gray-800">
 
-    <h2>§ 1. Postanowienia Ogólne</h2>
-    [cite_start]<p>Aplikacja Aikcal (zwana dalej "Aplikacją") jest własnością Adama Liwskiego (kontakt: kontakt@aikcal.app). [cite: 20] [cite_start]Regulamin określa zasady korzystania z Aplikacji. [cite: 21] [cite_start]Korzystając z Aplikacji, akceptujesz niniejszy Regulamin oraz integralne z nim <a href="./polityka-prywatnosci.html">Politykę Prywatności</a> i <a href="./zastrzezenie.html">Zastrzeżenie (Disclaimer)</a>. [cite: 22]</p>
+    <div class="container mx-auto p-4 sm:p-6 md:p-8 max-w-3xl">
+        <main class="bg-white p-6 sm:p-8 rounded-lg shadow-sm">
+            <header class="text-center border-b border-gray-200 pb-6 mb-6">
+                <h1 class="text-3xl sm:text-4xl font-bold text-gray-900">Regulamin Aplikacji AIKcal</h1>
+                <p class="text-gray-600 mt-2">Ostatnia aktualizacja: 23.07.2025</p>
+            </header>
+            
+            <div class="prose max-w-none">
+                <h2>§ 1. Postanowienia Ogólne</h2>
+                <p>Aplikacja Aikcal (zwana dalej "Aplikacją") jest własnością Adama Liwskiego (kontakt: kontakt@aikcal.app). Regulamin określa zasady korzystania z Aplikacji. Korzystając z Aplikacji, akceptujesz niniejszy Regulamin oraz integralne z nim <a href="./polityka-prywatnosci.html">Politykę Prywatności</a> i <a href="./zastrzezenie.html">Zastrzeżenie (Disclaimer)</a>.</p>
 
-    <h2>§ 2. Warunki Użytkowania</h2>
-    [cite_start]<p>Aplikacja jest przeznaczona wyłącznie dla osób pełnoletnich. [cite: 23] [cite_start]Do założenia konta wymagany jest adres e-mail oraz wyraźna zgoda na przetwarzanie danych zdrowotnych. [cite: 24] [cite_start]Zabronione jest udostępnianie konta osobom trzecim oraz używanie Aplikacji w sposób zakłócający jej działanie. [cite: 25]</p>
-    
-    <h2>§ 3. Funkcjonalności Aplikacji</h2>
-    [cite_start]<p>Użytkownik może śledzić spożycie kalorii, generować plany dietetyczne i analizować postępy. [cite: 26] [cite_start]Rekomendacje są generowane przez AI (Google Gemini) na podstawie wprowadzonych danych. [cite: 27] [cite_start]Aplikacja nie gwarantuje dokładności szacunków ani efektów zdrowotnych. [cite: 28]</p>
+                <h2>§ 2. Warunki Użytkowania</h2>
+                <p>Aplikacja jest przeznaczona wyłącznie dla osób pełnoletnich. Do założenia konta wymagany jest adres e-mail oraz wyraźna zgoda na przetwarzanie danych zdrowotnych. Zabronione jest udostępnianie konta osobom trzecim oraz używanie Aplikacji w sposób zakłócający jej działanie.</p>
+                
+                <h2>§ 3. Funkcjonalności Aplikacji</h2>
+                <p>Użytkownik może śledzić spożycie kalorii, generować plany dietetyczne i analizować postępy. Rekomendacje są generowane przez AI (Google Gemini) na podstawie wprowadzonych danych. Aplikacja nie gwarantuje dokładności szacunków ani efektów zdrowotnych.</p>
 
-    <h2>§ 4. Dane Osobowe i Bezpieczeństwo</h2>
-    [cite_start]<p>Szczegóły przetwarzania danych określa <a href="./polityka-prywatnosci.html">Polityka Prywatności</a>. [cite: 29] [cite_start]Użytkownik wyraża zgodę na przetwarzanie danych zdrowotnych oraz na otrzymywanie e-maili transakcyjnych (wysyłanych via SendGrid). [cite: 30] [cite_start]Użytkownik odpowiada za bezpieczeństwo swojego hasła i danych na własnym urządzeniu. [cite: 31]</p>
-    
-    <h2>§ 5. Odpowiedzialność i Ograniczenia</h2>
-    [cite_start]<p>Aplikacja nie jest narzędziem medycznym, a wszystkie rekomendacje mają charakter informacyjny. [cite: 32] [cite_start]Administrator nie ponosi odpowiedzialności za szkody wynikłe z zastosowania zaleceń Aplikacji, błędy w szacunkach czy działanie usług zewnętrznych. [cite: 33] [cite_start]Treści zawarte w <a href="./zastrzezenie.html">Zastrzeżeniu (Disclaimer)</a> stanowią integralną część Regulaminu. [cite: 34]</p>
-    
-    <h2>§ 6. Prawa Autorskie</h2>
-    <p>Wszystkie treści w Aplikacji są własnością Adama Liwskiego. [cite_start]Zabronione jest ich kopiowanie i rozpowszechnianie bez zgody. [cite: 35, 36]</p>
+                <h2>§ 4. Dane Osobowe i Bezpieczeństwo</h2>
+                <p>Szczegóły przetwarzania danych określa <a href="./polityka-prywatnosci.html">Polityka Prywatności</a>. Użytkownik wyraża zgodę na przetwarzanie danych zdrowotnych oraz na otrzymywanie e-maili transakcyjnych (wysyłanych via SendGrid). Użytkownik odpowiada za bezpieczeństwo swojego hasła i danych na własnym urządzeniu.</p>
+                
+                <h2>§ 5. Odpowiedzialność i Ograniczenia</h2>
+                <p>Aplikacja nie jest narzędziem medycznym, a wszystkie rekomendacje mają charakter informacyjny. Administrator nie ponosi odpowiedzialności za szkody wynikłe z zastosowania zaleceń Aplikacji, błędy w szacunkach czy działanie usług zewnętrznych. Treści zawarte w <a href="./zastrzezenie.html">Zastrzeżeniu (Disclaimer)</a> stanowią integralną część Regulaminu.</p>
+                
+                <h2>§ 6. Prawa Autorskie</h2>
+                <p>Wszystkie treści w Aplikacji są własnością Adama Liwskiego. Zabronione jest ich kopiowanie i rozpowszechnianie bez zgody.</p>
 
-    <h2>§ 7. Rezygnacja z Usługi</h2>
-    [cite_start]<p>Użytkownik może usunąć konto w dowolnym momencie, kontaktując się pod adresem e-mail: kontakt@aikcal.app. [cite: 37] [cite_start]Dane zostaną trwale usunięte zgodnie z <a href="./polityka-prywatnosci.html">Polityką Prywatności</a>. [cite: 38]</p>
-    
-    <h2>§ 8. Zmiany Regulaminu</h2>
-    <p>Administrator może aktualizować Regulamin. [cite_start]O zmianach użytkownik zostanie powiadomiony. [cite: 39]</p>
+                <h2>§ 7. Rezygnacja z Usługi</h2>
+                <p>Użytkownik może usunąć konto w dowolnym momencie, kontaktując się pod adresem e-mail: kontakt@aikcal.app. Dane zostaną trwale usunięte zgodnie z <a href="./polityka-prywatnosci.html">Polityką Prywatności</a>.</p>
+                
+                <h2>§ 8. Zmiany Regulaminu</h2>
+                <p>Administrator może aktualizować Regulamin. O zmianach użytkownik zostanie powiadomiony.</p>
+            </div>
+        </main>
+    </div>
+
 </body>
 </html>
