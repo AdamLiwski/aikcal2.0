@@ -837,8 +837,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const meal = result.aggregated_meal;
             const ingredients = result.deconstruction_details;
-
-            // --- ZMIANA A) Zaktualizowany szablon ---
+            
+            // ### ZMIANA ###
+            // Zmieniono szablon, aby zawierał dwa ukryte pola:
+            // - `pristine-data`: Przechowuje oryginalne, niezmienione dane z API.
+            // - `current-data`: Przechowuje aktualny, przeliczony stan do zapisu.
             container.innerHTML = `
                 <div class="analysis-summary">
                     <div class="summary-header">
@@ -856,13 +859,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="meal-item-ingredients">
                     ${templates.interactiveIngredientList(ingredients, true)}
                 </div>
-                <input type="hidden" id="analysis-original-data" value='${JSON.stringify(result)}'>
+                <input type="hidden" id="analysis-pristine-data" value='${JSON.stringify(result)}'>
+                <input type="hidden" id="analysis-current-data" value='${JSON.stringify(result)}'>
             `;
 
             selectors.addMealModal.querySelector('.modal-footer').classList.remove('hidden');
             
-            // --- ZMIANA B) Zaktualizowane listenery ---
-            // Nowy, bardziej ogólny listener dla całego kontenera analizy
             container.addEventListener('click', e => {
                 const toggle = e.target.closest('.ingredients-toggle');
                 if (toggle) {
@@ -870,9 +872,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     container.querySelector('.meal-item-ingredients').classList.toggle('open');
                 }
             });
+
+            // ### ZMIANA ###
+            // Zaktualizowano listener, aby przekazywał tylko prefix 'analysis' do funkcji przeliczającej.
             container.addEventListener('input', (e) => {
                 if (e.target.id === 'analysis-total-weight-input' || e.target.classList.contains('ingredient-weight-input') || e.target.classList.contains('ingredient-checkbox')) {
-                    handle.recalculateMacros('analysis-original-data', e.target);
+                    handle.recalculateMacros('analysis', e.target);
                 }
             });
         },
@@ -1372,32 +1377,42 @@ document.addEventListener('DOMContentLoaded', () => {
                 }, 3000); // 3 sekundy ciszy
             };
         },
-        recalculateMacros: (sourceElementId, triggerElement) => {
-            const sourceInput = $(`#${sourceElementId}`);
-            const container = sourceInput.closest('.modal-content');
-            if (!sourceInput || !container) return;
+        // ### KLUCZOWA ZMIANA ###
+        // Całkowicie przeredagowana funkcja `recalculateMacros`.
+        // Teraz zawsze odnosi się do "dziewiczego" stanu (`pristine-data`),
+        // co zapewnia poprawne, proporcjonalne skalowanie.
+        recalculateMacros: (prefix, triggerElement) => {
+            const pristineInput = $(`#${prefix}-pristine-data`);
+            const currentInput = $(`#${prefix}-current-data`);
+            const container = pristineInput.closest('.modal-content');
+            if (!pristineInput || !currentInput || !container) return;
 
-            const originalResult = JSON.parse(sourceInput.value);
+            // 1. Zawsze czytaj oryginalne dane z `pristine` inputa. Nigdy go nie modyfikuj.
+            const originalResult = JSON.parse(pristineInput.value);
             const originalDeconstruction = originalResult.deconstruction_details || [];
             const ingredientsContainer = container.querySelector('.interactive-ingredients');
             if (!originalResult || !ingredientsContainer) return;
 
-            const baseTotalWeight = originalDeconstruction.reduce((sum, item) => sum + (item.quantity_grams || 0), 0);
+            // Oblicz oryginalną wagę całkowitą na podstawie `pristine` danych.
+            const originalTotalWeight = originalDeconstruction.reduce((sum, item) => sum + (item.quantity_grams || 0), 0);
             
-            // Skalowanie w dół (z wagi całkowitej na składniki)
+            // 2. Logika skalowania, gdy zmieniono wagę całkowitą.
             if (triggerElement && triggerElement.id.includes('total-weight-input')) {
                 const newTotalWeight = parseFloat(triggerElement.value);
-                if (!isNaN(newTotalWeight) && newTotalWeight >= 0) {
-                    const totalWeightFactor = baseTotalWeight > 0 ? newTotalWeight / baseTotalWeight : 0;
+                if (!isNaN(newTotalWeight) && newTotalWeight >= 0 && originalTotalWeight > 0) {
+                    // Oblicz współczynnik zmiany.
+                    const ratio = newTotalWeight / originalTotalWeight;
+                    
+                    // Przejdź przez wszystkie składniki i zaktualizuj ich wagi w polach input.
                     ingredientsContainer.querySelectorAll('.ingredient-item').forEach((itemElement, index) => {
                         const weightInput = itemElement.querySelector('.ingredient-weight-input');
                         const originalIngredientWeight = originalDeconstruction[index]?.quantity_grams || 0;
-                        weightInput.value = Math.round(originalIngredientWeight * totalWeightFactor);
+                        weightInput.value = Math.round(originalIngredientWeight * ratio);
                     });
                 }
             }
 
-            // Przeliczenie Makro
+            // 3. Przelicz sumę makro na podstawie BIEŻĄCYCH wartości w polach input.
             let totalCalories = 0, totalProtein = 0, totalFat = 0, totalCarbs = 0, finalTotalWeight = 0;
             const finalIngredients = [];
 
@@ -1413,6 +1428,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         finalTotalWeight += currentWeight;
                         
                         const originalWeight = originalItem.quantity_grams || 0;
+                        // Przelicz makro dla składnika na podstawie jego nowej wagi.
                         if (originalWeight > 0) {
                             const factor = currentWeight / originalWeight;
                             totalCalories += (originalItem.calories || 0) * factor;
@@ -1420,32 +1436,38 @@ document.addEventListener('DOMContentLoaded', () => {
                             totalFat += (originalItem.fat || 0) * factor;
                             totalCarbs += (originalItem.carbs || 0) * factor;
                         }
-                        finalIngredients.push({ ...originalItem, quantity_grams: currentWeight });
+                        finalIngredients.push({ ...originalItem, quantity_grams: currentWeight, calories: (originalItem.calories || 0) * (currentWeight / originalWeight), protein: (originalItem.protein || 0) * (currentWeight / originalWeight), fat: (originalItem.fat || 0) * (currentWeight / originalWeight), carbs: (originalItem.carbs || 0) * (currentWeight / originalWeight) });
                     }
                 }
             });
             
+            // 4. Jeśli zmieniono wagę składnika, zaktualizuj wagę całkowitą.
             if (triggerElement && !triggerElement.id.includes('total-weight-input')) {
-                const totalWeightInput = container.querySelector('#analysis-total-weight-input') || container.querySelector('#edit-total-weight-input');
+                const totalWeightInput = container.querySelector(`#${prefix}-total-weight-input`);
                 if(totalWeightInput) totalWeightInput.value = Math.round(finalTotalWeight);
             }
 
+            // 5. Zaktualizuj wyświetlane podsumowanie makro.
             container.querySelector('#analysis-macros-summary').textContent = `${Math.round(totalCalories)} kcal &middot; B:${Math.round(totalProtein)} T:${Math.round(totalFat)} W:${Math.round(totalCarbs)}`;
             
+            // 6. Zapisz BIEŻĄCY, przeliczony stan do `current` inputa.
             const finalDataForSaving = {
                 aggregated_meal: { ...originalResult.aggregated_meal, name: originalResult.aggregated_meal.name, quantity_grams: finalTotalWeight, calories: totalCalories, protein: totalProtein, fat: totalFat, carbs: totalCarbs },
                 deconstruction_details: finalIngredients
             };
-            sourceInput.value = JSON.stringify(finalDataForSaving);
+            currentInput.value = JSON.stringify(finalDataForSaving);
         },
         addSelectedToJournal: async (e) => {
             const category = selectors.addMealModal.dataset.currentCategory;
             const date = toISODate(state.currentDate);
 
-            // Upewnij się, że przeliczamy makra ostatni raz przed wysłaniem
-            handle.recalculateMacros('analysis-original-data', $('#analysis-total-weight-input'));
+            // ### ZMIANA ###
+            // Upewnij się, że ostatnie zmiany są przeliczone przed zapisem.
+            handle.recalculateMacros('analysis', $('#analysis-total-weight-input'));
             
-            const finalData = JSON.parse($('#analysis-original-data').value);
+            // ### ZMIANA ###
+            // Pobierz dane z `current-data` inputa, który zawiera finalne, przeliczone wartości.
+            const finalData = JSON.parse($('#analysis-current-data').value);
             const mealComponent = finalData.aggregated_meal;
             
             let mealContainer = state.summary.meals.find(m => m.category === category);
@@ -1476,6 +1498,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const originalResultForRecalc = { aggregated_meal: entryData, deconstruction_details: entryData.deconstruction_details };
 
             const modalTitle = `Edytuj: ${entryData.product_name}`;
+            
+            // ### ZMIANA ###
+            // Zaktualizowano szablon edycji, aby również używał dwóch ukrytych pól.
             const modalContent = `
                 <div class="analysis-summary">
                      <div class="summary-header">
@@ -1493,7 +1518,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="meal-item-ingredients">
                     ${templates.interactiveIngredientList(entryData.deconstruction_details, true)}
                 </div>
-                <input type="hidden" id="edit-original-data" value='${JSON.stringify(originalResultForRecalc)}'>
+                <input type="hidden" id="edit-pristine-data" value='${JSON.stringify(originalResultForRecalc)}'>
+                <input type="hidden" id="edit-current-data" value='${JSON.stringify(originalResultForRecalc)}'>
             `;
             
             render.modal(modalTitle, modalContent, true, modal);
@@ -1506,9 +1532,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     container.querySelector('.meal-item-ingredients').classList.toggle('open');
                 }
             });
+
+            // ### ZMIANA ###
+            // Zaktualizowano listener dla modala edycji.
             container.addEventListener('input', (e) => {
                  if (e.target.id === 'edit-total-weight-input' || e.target.classList.contains('ingredient-weight-input') || e.target.classList.contains('ingredient-checkbox')) {
-                    handle.recalculateMacros('edit-original-data', e.target);
+                    handle.recalculateMacros('edit', e.target);
                 }
             });
             
@@ -1517,8 +1546,10 @@ document.addEventListener('DOMContentLoaded', () => {
             saveBtn.parentNode.replaceChild(newSaveBtn, saveBtn);
 
             newSaveBtn.addEventListener('click', async () => {
-                handle.recalculateMacros('edit-original-data', container.querySelector('#edit-total-weight-input'));
-                const finalData = JSON.parse(container.querySelector('#edit-original-data').value);
+                // ### ZMIANA ###
+                // Zaktualizowano logikę zapisu edytowanego wpisu.
+                handle.recalculateMacros('edit', container.querySelector('#edit-total-weight-input'));
+                const finalData = JSON.parse(container.querySelector('#edit-current-data').value);
                 const mealComponent = finalData.aggregated_meal;
                 
                 const updatedEntryData = {

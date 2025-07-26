@@ -135,25 +135,38 @@ async def _calculate_nutrients_for_dish(db: Session, dish: models.Dish, quantity
     """Oblicza wartości odżywcze dla istniejącego dania na podstawie jego przepisu."""
     total_base_weight = sum(ing.weight_g for ing in dish.ingredients)
     
-    # Określ stan skupienia dania na podstawie jego składników (np. jeśli dominują płyny)
-    # Prosta heurystyka: jeśli więcej niż 50% wagi to płyny, całe danie jest płynne
+    # Określ stan skupienia dania na podstawie jego składników
     liquid_weight = sum(ing.weight_g for ing in dish.ingredients if ing.product.state == ProductState.LIQUID)
     dish_state = ProductState.LIQUID if total_base_weight > 0 and (liquid_weight / total_base_weight) > 0.5 else ProductState.SOLID
 
-    # Użyj naszego inteligentnego przelicznika, aby uzyskać wagę porcji użytkownika w gramach
-    user_portion_grams, _ = units.standardize_unit(quantity, unit, dish_state)
+    # --- POCZĄTEK ZINTEGROWANEJ POPRAWKI ---
+    # Sprawdzamy, czy użytkownik poprosił o "sztukę" dania złożonego.
+    unit_lower = str(unit).lower()
+    is_piece_of_dish = unit_lower in ["sztuka", "sztuki", "szt."]
+
+    if is_piece_of_dish and total_base_weight > 0:
+        # Jeśli tak, waga porcji to ilość sztuk * obliczona waga całego dania.
+        # To obchodzi problematyczne wywołanie standardize_unit dla dań.
+        user_portion_grams = quantity * total_base_weight
+    else:
+        # W przeciwnym razie używamy dotychczasowej logiki dla jednostek standardowych (g, ml).
+        user_portion_grams, _ = units.standardize_unit(quantity, unit, dish_state)
+    # --- KONIEC ZINTEGROWANEJ POPRAWKI ---
 
     scaling_factor = user_portion_grams / total_base_weight if total_base_weight > 0 else 0
     
     total_nutrients = {"calories": 0.0, "protein": 0.0, "fat": 0.0, "carbs": 0.0}
     for ingredient in dish.ingredients:
         if ingredient.product and ingredient.product.nutrients:
+            # Obliczamy wartości odżywcze dla bazowej 100g każdego składnika
             factor = ingredient.weight_g / 100.0
             total_nutrients["calories"] += ingredient.product.nutrients.get("calories", 0) * factor
             total_nutrients["protein"] += ingredient.product.nutrients.get("protein", 0) * factor
             total_nutrients["fat"] += ingredient.product.nutrients.get("fat", 0) * factor
             total_nutrients["carbs"] += ingredient.product.nutrients.get("carbs", 0) * factor
 
+    # Skalujemy sumaryczne wartości odżywcze całego dania do porcji użytkownika
+    # Uwaga: Tutaj skalujemy sumę wartości odżywczych całego dania, a nie wartości per 100g
     final_nutrients = {key: round(val * scaling_factor, 1) for key, val in total_nutrients.items()}
     final_nutrients['calories'] = round(final_nutrients['calories'])
 
@@ -175,7 +188,7 @@ async def _calculate_nutrients_for_dish(db: Session, dish: models.Dish, quantity
 def _calculate_nutrients_for_product(product: models.Product, quantity: float, unit: str):
     """Oblicza wartości dla produktu podstawowego na podstawie porcji użytkownika."""
     # POPRAWKA: Usunięto błędny, czwarty argument `db` z wywołania funkcji
-    standardized_grams, _ = units.standardize_unit(quantity, unit, product.state)
+    standardized_grams, _ = units.standardize_unit(quantity, unit, product.state, product.average_weight_g)
     factor = standardized_grams / 100.0
     
     nutrients = {
@@ -186,7 +199,7 @@ def _calculate_nutrients_for_product(product: models.Product, quantity: float, u
     }
     
     aggregated_meal = {
-        "name": f"{product.name} ({quantity} {unit})",
+        "name": f"{product.name}",
         "quantity_grams": round(standardized_grams),
         "display_quantity_text": f"{quantity} {unit}",
         **nutrients
@@ -204,23 +217,25 @@ async def _learn_new_dish(db: Session, dish_name: str, quantity: float, unit: st
     first_pass_prompt = f"""
     Jesteś dietetykiem. Przeanalizuj produkt: "{dish_name}".
     Odpowiedz ZAWSZE w formacie JSON z kluczami: "is_complex" (boolean: true, jeśli to danie wieloskładnikowe; false, jeśli to produkt prosty),
-    "name" (poprawna nazwa), "quantity" (typowa waga w gramach), "unit" (zawsze "g"), "calories", "protein", "fat", "carbs".
+    "name" (poprawna nazwa), "base_quantity_g" (typowa waga w gramach dla całej porcji, np. dla przepisu), "nutrients_per_100g" (obiekt z "calories", "protein", "fat", "carbs" dla 100g produktu).
     """
     response_text = await _get_ai_response(first_pass_prompt)
     try:
         parsed = json.loads(_clean_json_response(response_text))
-        if not all(k in parsed for k in ["name", "calories", "is_complex"]):
+        if not all(k in parsed for k in ["name", "nutrients_per_100g", "is_complex"]):
             return None # Odpowiedź AI jest niekompletna
     except (json.JSONDecodeError, TypeError):
         return None
 
     is_complex_dish = parsed.get("is_complex", False)
     deconstruction_details = []
+    nutrients_data = parsed.get("nutrients_per_100g", {})
 
     # Krok 2: Jeśli AI oznaczyło to jako danie złożone, poproś o dekonstrukcję.
     if is_complex_dish:
+        base_weight = parsed.get("base_quantity_g", 100)
         decon_prompt = f"""
-        Podaj przepis dla potrawy "{parsed['name']}" jako listę składników i ich wag w gramach dla porcji {parsed['quantity']}g.
+        Podaj przepis dla potrawy "{parsed['name']}" jako listę składników i ich wag w gramach dla porcji {base_weight}g.
         Odpowiedz TYLKO w formacie tablicy JSON `[]` z obiektami o kluczach "ingredient_name" i "weight_g".
         """
         decon_response_text = await _get_ai_response(decon_prompt)
@@ -235,37 +250,41 @@ async def _learn_new_dish(db: Session, dish_name: str, quantity: float, unit: st
             deconstruction_details = [] # W razie błędu, zapisz bez dekonstrukcji
 
     # Krok 3: Zapisz nowe danie/produkt w bazie.
-    # Użyjemy tabeli Products jako uniwersalnego cache'u
+    product_state = schemas.ProductState.LIQUID if "zupa" in parsed['name'].lower() else schemas.ProductState.SOLID
+    
+    # Zapisujemy produkt, który przechowuje wartości odżywcze per 100g
     product_schema = schemas.ProductCreate(
         name=parsed['name'],
-        nutrients={"calories": parsed["calories"], "protein": parsed["protein"], "fat": parsed["fat"], "carbs": parsed["carbs"]},
-        state=schemas.ProductState.LIQUID if "zupa" in parsed['name'].lower() else schemas.ProductState.SOLID,
-        average_weight_g=parsed.get("quantity") if not is_complex_dish else 0
+        nutrients=nutrients_data,
+        state=product_state,
+        average_weight_g=parsed.get("base_quantity_g") if not is_complex_dish else 0
     )
     new_db_product = crud.create_product(db, product=product_schema)
 
-    if is_complex_dish:
-        # Zapisz również w tabeli Dishes, aby przechowywać przepis
+    if is_complex_dish and deconstruction_details:
+        # Jeśli to danie złożone, zapisz przepis w tabeli Dishes
         dish_schema = schemas.DishCreate(
             name=parsed['name'],
             aliases=[parsed['name']],
             ingredients=[schemas.DishIngredientCreate(product_name=ing["ingredient_name"], weight_g=ing["weight_g"]) for ing in deconstruction_details]
         )
-        crud.create_dish_with_ingredients(db, dish=dish_schema)
+        # Powiąż nowo utworzony produkt z daniem
+        crud.create_dish_with_ingredients(db, dish=dish_schema, base_product_id=new_db_product.id)
+
 
     # Krok 4: Zwróć wynik przeskalowany do porcji użytkownika.
     final_quantity_grams, _ = units.standardize_unit(quantity, unit, new_db_product.state, new_db_product.average_weight_g)
     factor = final_quantity_grams / 100.0
 
     final_nutrients = {
-        "calories": round(new_db_product.nutrients.get("calories", 0) * factor),
-        "protein": round(new_db_product.nutrients.get("protein", 0) * factor, 1),
-        "fat": round(new_db_product.nutrients.get("fat", 0) * factor, 1),
-        "carbs": round(new_db_product.nutrients.get("carbs", 0) * factor, 1)
+        "calories": round(nutrients_data.get("calories", 0) * factor),
+        "protein": round(nutrients_data.get("protein", 0) * factor, 1),
+        "fat": round(nutrients_data.get("fat", 0) * factor, 1),
+        "carbs": round(nutrients_data.get("carbs", 0) * factor, 1)
     }
 
     aggregated_meal = {
-        "name": f"{parsed['name']} ({quantity} {unit})",
+        "name": f"{parsed['name']}",
         "quantity_grams": round(final_quantity_grams),
         "display_quantity_text": f"{quantity} {unit}",
         **final_nutrients
@@ -278,21 +297,22 @@ async def _learn_new_product(db: Session, product_name: str):
     product_prompt = f"""
     Jesteś encyklopedią żywienia. Podaj kompletne dane dla produktu: '{product_name}'.
     Odpowiedz ZAWSZE i TYLKO w formacie JSON z kluczami:
+    - "name": poprawna, ujednolicona nazwa produktu.
     - "state": "solid" lub "liquid",
-    - "average_weight_g": typowa waga jednej sztuki w gramach (lub 0, jeśli produkt nie jest sztukowy),
+    - "average_weight_g": typowa waga jednej sztuki w gramach (lub 0, jeśli produkt nie jest sprzedawany na sztuki),
     - "nutrients": obiekt z kluczami "calories", "protein", "fat", "carbs" dla 100g lub 100ml.
     """
     response_text = await _get_ai_response(product_prompt)
     try:
         data = json.loads(_clean_json_response(response_text))
         product_schema = schemas.ProductCreate(
-            name=product_name,
+            name=data.get("name", product_name),
             nutrients=data.get("nutrients", {}),
             state=data.get("state", "solid"),
             average_weight_g=data.get("average_weight_g", 0)
         )
         crud.create_product(db, product=product_schema)
-        print(f"DEBUG: Cache WRITE! Nauczono się nowego produktu: '{product_name}'.")
+        print(f"DEBUG: Cache WRITE! Nauczono się nowego produktu: '{data.get('name', product_name)}'.")
     except (json.JSONDecodeError, TypeError) as e:
         print(f"BŁĄD: Nie udało się nauczyć nowego produktu '{product_name}'. {e}")
 
