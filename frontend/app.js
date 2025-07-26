@@ -776,7 +776,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                         <span class="meal-macros">${Math.round(entry.calories)} kcal &middot; B:${Math.round(entry.protein)} T:${Math.round(entry.fat)} W:${Math.round(entry.carbs)}</span>
                                     </div>
                                     <div class="meal-actions">
-                                        <button class="icon-btn edit-meal-entry-btn" data-id="${entry.id}"><i data-feather="edit"></i></button>
+                                        <button class="icon-btn edit-meal-entry-btn" data-entry='${JSON.stringify(entry)}'><i data-feather="edit"></i></button>
                                         <button class="icon-btn delete-meal-entry-btn" data-id="${entry.id}"><i data-feather="trash-2"></i></button>
                                     </div>
                                 </div>
@@ -842,8 +842,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const meal = result.aggregated_meal;
             const ingredients = result.deconstruction_details;
 
-            // --- ZMIANA A) ---
-            // Zaktualizowany szablon z polem do edycji wagi całkowitej
+            // --- ZMIANA A) Zaktualizowany szablon ---
             container.innerHTML = `
                 <div class="analysis-summary">
                     <div class="summary-header">
@@ -854,17 +853,30 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                     <div class="summary-macros" id="analysis-macros-summary">${Math.round(meal.calories)} kcal &middot; B:${Math.round(meal.protein)} T:${Math.round(meal.fat)} W:${Math.round(meal.carbs)}</div>
                 </div>
-                ${templates.interactiveIngredientList(ingredients, true)}
+                <div class="ingredients-toggle">
+                    <span>Składniki</span>
+                    <i data-feather="chevron-down" class="collapse-icon"></i>
+                </div>
+                <div class="meal-item-ingredients">
+                    ${templates.interactiveIngredientList(ingredients, true)}
+                </div>
                 <input type="hidden" id="analysis-original-data" value='${JSON.stringify(result)}'>
             `;
 
             selectors.addMealModal.querySelector('.modal-footer').classList.remove('hidden');
             
-            // --- ZMIANA C) ---
+            // --- ZMIANA B) Zaktualizowane listenery ---
             // Nowy, bardziej ogólny listener dla całego kontenera analizy
+            container.addEventListener('click', e => {
+                const toggle = e.target.closest('.ingredients-toggle');
+                if (toggle) {
+                    toggle.classList.toggle('open');
+                    container.querySelector('.meal-item-ingredients').classList.toggle('open');
+                }
+            });
             container.addEventListener('input', (e) => {
                 if (e.target.id === 'analysis-total-weight-input' || e.target.classList.contains('ingredient-weight-input') || e.target.classList.contains('ingredient-checkbox')) {
-                    handle.recalculateAnalysisMacros('analysis-original-data', e.target);
+                    handle.recalculateMacros('analysis-original-data', e.target);
                 }
             });
         },
@@ -1412,6 +1424,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         totalCarbs += (originalItem.carbs || 0) * factor;
                     }
                     finalIngredients.push({ ...originalItem, quantity_grams: currentWeight });
+                } else {
+                    // Jeśli składnik jest odznaczony, dodaj go do listy z wagą 0, aby zachować kolejność
+                    finalIngredients.push({ ...originalItem, quantity_grams: 0 });
                 }
             });
             
@@ -1463,37 +1478,42 @@ document.addEventListener('DOMContentLoaded', () => {
         },
         editMealEntry: (entryData) => {
             const modal = selectors.editMealEntryModal;
-            if (!entryData.deconstruction_details || entryData.deconstruction_details.length === 0) {
-                // TODO: Dodać prosty edytor dla produktów bez dekonstrukcji
-                return showNotification("Edycja produktów prostych jest w trakcie implementacji.", "info");
-            }
-            
             const originalResultForRecalc = { aggregated_meal: entryData, deconstruction_details: entryData.deconstruction_details };
+
             const modalTitle = `Edytuj: ${entryData.product_name}`;
-            
-            // Zaktualizowany szablon dla modala edycji, aby był spójny
             const modalContent = `
                 <div class="analysis-summary">
                      <div class="summary-header">
                         <span id="analysis-final-name">${entryData.product_name}</span>
                         <div class="total-weight-editor">
-                            (<input type="number" id="analysis-total-weight-input" value="${Math.round(entryData.standardized_grams)}">g)
+                           (<input type="number" id="edit-total-weight-input" value="${Math.round(entryData.standardized_grams || entryData.amount)}">g)
                         </div>
                     </div>
                     <div class="summary-macros" id="analysis-macros-summary">${Math.round(entryData.calories)} kcal &middot; B:${Math.round(entryData.protein)} T:${Math.round(entryData.fat)} W:${Math.round(entryData.carbs)}</div>
                 </div>
-                ${templates.interactiveIngredientList(entryData.deconstruction_details, true)}
+                <div class="ingredients-toggle">
+                    <span>Składniki</span>
+                    <i data-feather="chevron-down" class="collapse-icon"></i>
+                </div>
+                <div class="meal-item-ingredients">
+                    ${templates.interactiveIngredientList(entryData.deconstruction_details, true)}
+                </div>
                 <input type="hidden" id="edit-original-data" value='${JSON.stringify(originalResultForRecalc)}'>
             `;
             
             render.modal(modalTitle, modalContent, true, modal);
             
             const container = modal.querySelector('#edit-meal-entry-modal-body');
-            
-            // Zaktualizowany listener dla modala edycji
+            container.addEventListener('click', e => {
+                const toggle = e.target.closest('.ingredients-toggle');
+                if (toggle) {
+                    toggle.classList.toggle('open');
+                    container.querySelector('.meal-item-ingredients').classList.toggle('open');
+                }
+            });
             container.addEventListener('input', (e) => {
-                if (e.target.id === 'analysis-total-weight-input' || e.target.classList.contains('ingredient-weight-input') || e.target.classList.contains('ingredient-checkbox')) {
-                    handle.recalculateAnalysisMacros('edit-original-data', e.target);
+                 if (e.target.id === 'edit-total-weight-input' || e.target.classList.contains('ingredient-weight-input') || e.target.classList.contains('ingredient-checkbox')) {
+                    handle.recalculateMacros('edit-original-data', e.target);
                 }
             });
             
@@ -1502,8 +1522,10 @@ document.addEventListener('DOMContentLoaded', () => {
             saveBtn.parentNode.replaceChild(newSaveBtn, saveBtn);
 
             newSaveBtn.addEventListener('click', async () => {
+                handle.recalculateMacros('edit-original-data', container.querySelector('#edit-total-weight-input'));
                 const finalData = JSON.parse(container.querySelector('#edit-original-data').value);
                 const mealComponent = finalData.aggregated_meal;
+                
                 const updatedEntryData = {
                     product_name: mealComponent.product_name,
                     calories: mealComponent.calories, protein: mealComponent.protein,
