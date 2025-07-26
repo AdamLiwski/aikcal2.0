@@ -1487,49 +1487,7 @@ html.dark .challenge-status.ukończone {
 .interactive-ingredients h4 {
     margin-bottom: 0.5rem;
 }
-.ingredient-item {
-    display: grid;
-    grid-template-columns: auto 1fr auto; /* Checkbox | Nazwa | Kontrolki */
-    gap: 0.75rem;
-    align-items: center;
-    padding: 0.5rem 0;
-    border-bottom: 1px solid var(--bg-secondary);
-}
-.ingredient-item:last-child {
-    border-bottom: none;
-}
-.ingredient-controls {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-.ingredient-weight-input {
-    width: 70px;
-    padding: 0.4rem 0.6rem;
-    text-align: right;
-}
-/* Nowe, kompaktowe style dla edytora składników */
-.ingredient-item {
-    display: grid;
-    grid-template-columns: auto 1fr auto; /* Checkbox | Nazwa | Kontrolki */
-    gap: 0.75rem;
-    align-items: center;
-    padding: 0.5rem 0;
-    border-bottom: 1px solid var(--bg-secondary);
-}
-.ingredient-item:last-child {
-    border-bottom: none;
-}
-.ingredient-controls {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-.ingredient-weight-input {
-    width: 70px;
-    padding: 0.4rem 0.6rem;
-    text-align: right;
-}
+
 /* Poprawka dla edytora wagi całkowitej w podsumowaniu analizy */
 .analysis-summary .summary-header {
     display: flex;
@@ -1547,33 +1505,58 @@ html.dark .challenge-status.ukończone {
     font-size: 1.1rem;
     font-weight: 600;
 }
-/* Style dla rozwijanej listy składników w dzienniku */
-.meal-item-ingredients {
-    overflow: hidden;
-    transition: max-height 0.4s ease-in-out, margin 0.4s ease-in-out;
-    max-height: 0;
-    margin-top: 0;
-    padding-left: 1rem;
-    border-left: 2px solid var(--border-color);
+
+/* --- OSTATECZNE STYLE DLA DZIENNIKA I EDYTORÓW --- */
+/* 1. Poprawka wyrównania w Dzienniku */
+.meal-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
 }
-.meal-item-ingredients.open {
-    max-height: 500px; /* Wystarczająco dużo miejsca na składniki */
-    margin-top: 0.5rem;
+.meal-item .meal-info {
+    flex-grow: 1;
 }
-.meal-item-header.meal-item-toggle .collapse-icon {
-    transition: transform 0.3s;
+.meal-item .meal-actions {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    margin-left: 1rem;
 }
-.meal-item-header.meal-item-toggle.open .collapse-icon {
-    transform: rotate(180deg);
-}
-/* Poprawka wyrównania przycisków w dzienniku */
-.meal-item-header {
+/* 2. Style dla rozwijanej listy składników (TYLKO w Analizie i Edycji) */
+.ingredients-toggle {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    width: 100%;
+    cursor: pointer;
+    padding: 0.75rem 0.5rem;
+    margin-top: 1rem;
+    border-top: 1px solid var(--border-color);
+    font-weight: 500;
+    color: var(--text-secondary);
 }
-.header-icons {
-    display: flex;
+.ingredients-toggle .collapse-icon {
+    transition: transform 0.3s;
+}
+.ingredients-toggle.open .collapse-icon {
+    transform: rotate(180deg);
+}
+.meal-item-ingredients {
+    overflow: hidden;
+    max-height: 0;
+    transition: max-height 0.4s ease-in-out;
+}
+.meal-item-ingredients.open {
+    max-height: 500px;
+}
+/* 3. Kompaktowa, edytowalna lista składników */
+.ingredient-item {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 0.75rem;
     align-items: center;
+    padding: 0.6rem 0;
+    border-bottom: 1px solid var(--bg-secondary);
+}
+.ingredient-weight-input {
+    width: 75px; /* Ograniczenie szerokości pola */
 }

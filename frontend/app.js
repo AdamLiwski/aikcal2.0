@@ -765,19 +765,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="meals-list" id="meals-list-${categoryId}">
                         ${mealsInCategory.length > 0 ? mealsInCategory.flatMap(m => m.entries).map(entry => `
                             <div class="meal-item" data-id="${entry.id}" data-meal-id="${entry.meal_id}">
-                                <div class="meal-item-header">
+                                <div class="meal-item-header meal-item-toggle">
                                     <div class="meal-info">
-                                        <div class="meal-info-header meal-item-toggle">
-                                            <span>${entry.product_name}</span>
-                                            <div class="header-icons">
-                                                <i data-feather="chevron-down" class="collapse-icon"></i>
-                                            </div>
-                                        </div>
+                                        <span>${entry.product_name}</span>
                                         <span class="meal-macros">${Math.round(entry.calories)} kcal &middot; B:${Math.round(entry.protein)} T:${Math.round(entry.fat)} W:${Math.round(entry.carbs)}</span>
                                     </div>
-                                    <div class="meal-actions">
+                                    <div class="header-icons">
                                         <button class="icon-btn edit-meal-entry-btn" data-entry='${JSON.stringify(entry)}'><i data-feather="edit"></i></button>
                                         <button class="icon-btn delete-meal-entry-btn" data-id="${entry.id}"><i data-feather="trash-2"></i></button>
+                                        <i data-feather="chevron-down" class="collapse-icon"></i>
                                     </div>
                                 </div>
                                 <div class="meal-item-ingredients">
@@ -1386,47 +1382,46 @@ document.addEventListener('DOMContentLoaded', () => {
             const ingredientsContainer = container.querySelector('.interactive-ingredients');
             if (!originalResult || !ingredientsContainer) return;
 
-            // Ustalenie bazowej wagi oryginalnej porcji
             const baseTotalWeight = originalDeconstruction.reduce((sum, item) => sum + (item.quantity_grams || 0), 0);
             
-            // --- Logika Skalowania Całego Dania ---
+            // Skalowanie w dół (z wagi całkowitej na składniki)
             if (triggerElement && triggerElement.id.includes('total-weight-input')) {
-                const newTotalWeight = parseFloat(triggerElement.value) || 0;
-                const totalWeightFactor = baseTotalWeight > 0 ? newTotalWeight / baseTotalWeight : 0;
-
-                ingredientsContainer.querySelectorAll('.ingredient-item').forEach((itemElement, index) => {
-                    const weightInput = itemElement.querySelector('.ingredient-weight-input');
-                    const originalIngredientWeight = originalDeconstruction[index]?.quantity_grams || 0;
-                    weightInput.value = Math.round(originalIngredientWeight * totalWeightFactor);
-                });
+                const newTotalWeight = parseFloat(triggerElement.value);
+                if (!isNaN(newTotalWeight) && newTotalWeight >= 0) {
+                    const totalWeightFactor = baseTotalWeight > 0 ? newTotalWeight / baseTotalWeight : 0;
+                    ingredientsContainer.querySelectorAll('.ingredient-item').forEach((itemElement, index) => {
+                        const weightInput = itemElement.querySelector('.ingredient-weight-input');
+                        const originalIngredientWeight = originalDeconstruction[index]?.quantity_grams || 0;
+                        weightInput.value = Math.round(originalIngredientWeight * totalWeightFactor);
+                    });
+                }
             }
 
-            // --- Przeliczenie Makro ---
+            // Przeliczenie Makro
             let totalCalories = 0, totalProtein = 0, totalFat = 0, totalCarbs = 0, finalTotalWeight = 0;
             const finalIngredients = [];
 
             originalDeconstruction.forEach((originalItem, index) => {
                 const itemElement = ingredientsContainer.querySelector(`.ingredient-item[data-index="${index}"]`);
+                if (!itemElement) return;
                 const checkbox = itemElement.querySelector('.ingredient-checkbox');
                 const weightInput = itemElement.querySelector('.ingredient-weight-input');
                 
                 if (checkbox.checked) {
-                    const currentWeight = parseFloat(weightInput.value) || 0;
-                    finalTotalWeight += currentWeight;
-                    
-                    // Bezpieczne sprawdzenie, czy oryginalne dane istnieją
-                    const originalWeight = originalItem.quantity_grams || 0;
-                    if (originalWeight > 0) {
-                        const factor = currentWeight / originalWeight;
-                        totalCalories += (originalItem.calories || 0) * factor;
-                        totalProtein += (originalItem.protein || 0) * factor;
-                        totalFat += (originalItem.fat || 0) * factor;
-                        totalCarbs += (originalItem.carbs || 0) * factor;
+                    const currentWeight = parseFloat(weightInput.value);
+                    if (!isNaN(currentWeight) && currentWeight >= 0) {
+                        finalTotalWeight += currentWeight;
+                        
+                        const originalWeight = originalItem.quantity_grams || 0;
+                        if (originalWeight > 0) {
+                            const factor = currentWeight / originalWeight;
+                            totalCalories += (originalItem.calories || 0) * factor;
+                            totalProtein += (originalItem.protein || 0) * factor;
+                            totalFat += (originalItem.fat || 0) * factor;
+                            totalCarbs += (originalItem.carbs || 0) * factor;
+                        }
+                        finalIngredients.push({ ...originalItem, quantity_grams: currentWeight });
                     }
-                    finalIngredients.push({ ...originalItem, quantity_grams: currentWeight });
-                } else {
-                    // Jeśli składnik jest odznaczony, dodaj go do listy z wagą 0, aby zachować kolejność
-                    finalIngredients.push({ ...originalItem, quantity_grams: 0 });
                 }
             });
             
@@ -1438,7 +1433,7 @@ document.addEventListener('DOMContentLoaded', () => {
             container.querySelector('#analysis-macros-summary').textContent = `${Math.round(totalCalories)} kcal &middot; B:${Math.round(totalProtein)} T:${Math.round(totalFat)} W:${Math.round(totalCarbs)}`;
             
             const finalDataForSaving = {
-                aggregated_meal: { ...originalResult.aggregated_meal, quantity_grams: finalTotalWeight, calories: totalCalories, protein: totalProtein, fat: totalFat, carbs: totalCarbs },
+                aggregated_meal: { ...originalResult.aggregated_meal, name: originalResult.aggregated_meal.name, quantity_grams: finalTotalWeight, calories: totalCalories, protein: totalProtein, fat: totalFat, carbs: totalCarbs },
                 deconstruction_details: finalIngredients
             };
             sourceInput.value = JSON.stringify(finalDataForSaving);
@@ -1905,7 +1900,35 @@ document.addEventListener('DOMContentLoaded', () => {
             const settingsBtn = e.target.closest('#settings-btn');
             if (settingsBtn) return handle.openSettingsModal();
             
-            // DODAJ TEN NOWY BLOK
+            // NOWE: Listener dla przycisku edycji wpisu (przeniesiony wyżej)
+            const editEntryBtn = e.target.closest('.edit-meal-entry-btn');
+            if(editEntryBtn) {
+                e.stopPropagation();
+                const entryData = JSON.parse(editEntryBtn.dataset.entry);
+                handle.editMealEntry(entryData); 
+                return;
+            }
+
+            // Listener dla przycisku usuwania wpisu (przeniesiony wyżej)
+            const deleteEntryBtn = e.target.closest('.delete-meal-entry-btn');
+            if(deleteEntryBtn) {
+                const confirmDelete = await new Promise(resolve => {
+                    const modalHtml = `<div id="confirm-modal" class="modal-overlay"><div class="modal-content small"><h3>Potwierdź</h3><p>Na pewno usunąć ten produkt?</p><div class="modal-footer" style="justify-content: space-around;"><button id="cancel-delete-btn" class="secondary-btn">Anuluj</button><button id="confirm-delete-btn" class="danger-btn">Usuń</button></div></div></div>`;
+                    document.body.insertAdjacentHTML('beforeend', modalHtml);
+                    const confirmModal = $('#confirm-modal');
+                    $('#confirm-delete-btn').addEventListener('click', () => { confirmModal.remove(); resolve(true); });
+                    $('#cancel-delete-btn').addEventListener('click', () => { confirmModal.remove(); resolve(false); });
+                    confirmModal.addEventListener('click', (e) => { if (e.target === confirmModal) { confirmModal.remove(); resolve(false); } });
+                });
+
+                if(confirmDelete) {
+                    await api.deleteMealEntry(deleteEntryBtn.dataset.id);
+                    await render.dashboard();
+                }
+                return;
+            }
+
+            // Listener dla rozwijania/zwijania składników
             const mealItemToggle = e.target.closest('.meal-item-toggle');
             if (mealItemToggle) {
                 const mealItem = mealItemToggle.closest('.meal-item');
@@ -1963,33 +1986,6 @@ document.addEventListener('DOMContentLoaded', () => {
             if(addWorkoutBtn) {
                 e.stopPropagation();
                 handle.addWorkout();
-                return;
-            }
-
-            const deleteEntryBtn = e.target.closest('.delete-meal-entry-btn');
-            if(deleteEntryBtn) {
-                const confirmDelete = await new Promise(resolve => {
-                    const modalHtml = `<div id="confirm-modal" class="modal-overlay"><div class="modal-content small"><h3>Potwierdź</h3><p>Na pewno usunąć ten produkt?</p><div class="modal-footer" style="justify-content: space-around;"><button id="cancel-delete-btn" class="secondary-btn">Anuluj</button><button id="confirm-delete-btn" class="danger-btn">Usuń</button></div></div></div>`;
-                    document.body.insertAdjacentHTML('beforeend', modalHtml);
-                    const confirmModal = $('#confirm-modal');
-                    $('#confirm-delete-btn').addEventListener('click', () => { confirmModal.remove(); resolve(true); });
-                    $('#cancel-delete-btn').addEventListener('click', () => { confirmModal.remove(); resolve(false); });
-                    confirmModal.addEventListener('click', (e) => { if (e.target === confirmModal) { confirmModal.remove(); resolve(false); } });
-                });
-
-                if(confirmDelete) {
-                    await api.deleteMealEntry(deleteEntryBtn.dataset.id);
-                    await render.dashboard();
-                }
-                return;
-            }
-
-            // NOWE: Listener dla przycisku edycji wpisu
-            const editEntryBtn = e.target.closest('.edit-meal-entry-btn');
-            if(editEntryBtn) {
-                e.stopPropagation();
-                const entryData = JSON.parse(editEntryBtn.dataset.entry);
-                handle.editMealEntry(entryData); 
                 return;
             }
 
