@@ -130,73 +130,70 @@ async def _parse_user_query(text: Optional[str], image_base64: Optional[str]) ->
     normalized_name = units.normalize_name(product_name)
     return {"quantity": quantity, "unit": unit, "name": normalized_name, "original_text": product_name}
 
-
 async def _calculate_nutrients_for_dish(db: Session, dish: models.Dish, quantity: float, unit: str):
     """Oblicza wartości odżywcze dla istniejącego dania na podstawie jego przepisu."""
-    total_base_weight = sum(ing.weight_g for ing in dish.ingredients)
-    
-    # Określ stan skupienia dania na podstawie jego składników
-    liquid_weight = sum(ing.weight_g for ing in dish.ingredients if ing.product.state == ProductState.LIQUID)
-    dish_state = ProductState.LIQUID if total_base_weight > 0 and (liquid_weight / total_base_weight) > 0.5 else ProductState.SOLID
+    base_recipe_weight = sum(ing.weight_g for ing in dish.ingredients if ing.weight_g is not None)
+    if base_recipe_weight == 0:
+        return None
 
-    # --- POCZĄTEK ZINTEGROWANEJ POPRAWKI ---
-    # Sprawdzamy, czy użytkownik poprosił o "sztukę" dania złożonego.
-    unit_lower = str(unit).lower()
-    is_piece_of_dish = unit_lower in ["sztuka", "sztuki", "szt."]
+    user_portion_grams = 0
+    unit_lower = unit.lower().strip()
 
-    if is_piece_of_dish and total_base_weight > 0:
-        # Jeśli tak, waga porcji to ilość sztuk * obliczona waga całego dania.
-        # To obchodzi problematyczne wywołanie standardize_unit dla dań.
-        user_portion_grams = quantity * total_base_weight
+    if unit_lower in ["szt", "szt.", "sztuka", "sztuki"] or unit_lower == dish.name.lower():
+        user_portion_grams = base_recipe_weight * quantity
     else:
-        # W przeciwnym razie używamy dotychczasowej logiki dla jednostek standardowych (g, ml).
+        liquid_weight = sum(ing.weight_g for ing in dish.ingredients if ing.product and ing.product.state == ProductState.LIQUID)
+        dish_state = ProductState.LIQUID if (liquid_weight / base_recipe_weight) > 0.5 else ProductState.SOLID
         user_portion_grams, _ = units.standardize_unit(quantity, unit, dish_state)
-    # --- KONIEC ZINTEGROWANEJ POPRAWKI ---
 
-    scaling_factor = user_portion_grams / total_base_weight if total_base_weight > 0 else 0
-    
+    scaling_factor = user_portion_grams / base_recipe_weight if base_recipe_weight > 0 else 0
+
     total_nutrients = {"calories": 0.0, "protein": 0.0, "fat": 0.0, "carbs": 0.0}
+    deconstruction_details = []
+
     for ingredient in dish.ingredients:
         if ingredient.product and ingredient.product.nutrients:
-            # Obliczamy wartości odżywcze dla bazowej 100g każdego składnika
-            factor = ingredient.weight_g / 100.0
-            total_nutrients["calories"] += ingredient.product.nutrients.get("calories", 0) * factor
-            total_nutrients["protein"] += ingredient.product.nutrients.get("protein", 0) * factor
-            total_nutrients["fat"] += ingredient.product.nutrients.get("fat", 0) * factor
-            total_nutrients["carbs"] += ingredient.product.nutrients.get("carbs", 0) * factor
-
-    # Skalujemy sumaryczne wartości odżywcze całego dania do porcji użytkownika
-    # Uwaga: Tutaj skalujemy sumę wartości odżywczych całego dania, a nie wartości per 100g
-    final_nutrients = {key: round(val * scaling_factor, 1) for key, val in total_nutrients.items()}
-    final_nutrients['calories'] = round(final_nutrients['calories'])
-
-    # --- POCZĄTEK ZMIANY ---
-    deconstruction_details = []
-    for ing in dish.ingredients:
-        if ing.product and ing.product.nutrients:
-            scaled_weight = ing.weight_g * scaling_factor
-            # Obliczamy współczynnik skalujący dla wartości odżywczych na podstawie przeskalowanej wagi składnika
-            factor = scaled_weight / 100.0
+            # Obliczanie sumy nutrientów dla całego dania
+            factor_for_total = ingredient.weight_g / 100.0
+            total_nutrients["calories"] += ingredient.product.nutrients.get("calories", 0) * factor_for_total
+            total_nutrients["protein"] += ingredient.product.nutrients.get("protein", 0) * factor_for_total
+            total_nutrients["fat"] += ingredient.product.nutrients.get("fat", 0) * factor_for_total
+            total_nutrients["carbs"] += ingredient.product.nutrients.get("carbs", 0) * factor_for_total
             
-            details = {
-                "name": ing.product.name,
-                "quantity_grams": round(scaled_weight),
-                "calories": round(ing.product.nutrients.get("calories", 0) * factor),
-                "protein": round(ing.product.nutrients.get("protein", 0) * factor, 1),
-                "fat": round(ing.product.nutrients.get("fat", 0) * factor, 1),
-                "carbs": round(ing.product.nutrients.get("carbs", 0) * factor, 1),
-                # KLUCZOWY DODATEK: Przekazanie danych bazowych do frontendu
-                "nutrients_per_100g": ing.product.nutrients 
-            }
-            deconstruction_details.append(details)
-    # --- KONIEC ZMIANY ---
+            # Tworzenie dekonstrukcji dla frontendu (już przeskalowanej)
+            scaled_weight = ingredient.weight_g * scaling_factor
+            deconstruction_details.append({
+                "name": ingredient.product.name,
+                "quantity_grams": scaled_weight, # Zapisz dokładną wagę
+                "nutrients_per_100g": ingredient.product.nutrients
+            })
+
+    # --- KLUCZOWA POPRAWKA W ZAOKRĄGLANIU ---
+    final_nutrients = {
+        "calories": round(total_nutrients["calories"] * scaling_factor),
+        "protein": round(total_nutrients["protein"] * scaling_factor, 1),
+        "fat": round(total_nutrients["fat"] * scaling_factor, 1),
+        "carbs": round(total_nutrients["carbs"] * scaling_factor, 1)
+    }
 
     aggregated_meal = {
-        "name": f"{dish.name}",
-        "quantity_grams": round(user_portion_grams),
+        "name": dish.name,
+        "quantity_grams": user_portion_grams,
         "display_quantity_text": f"{quantity} {unit}",
         **final_nutrients
     }
+    
+    # Uzupełnij dekonstrukcję o obliczone, przeskalowane wartości
+    for detail in deconstruction_details:
+        factor = detail["quantity_grams"] / 100.0
+        nutrients = detail["nutrients_per_100g"]
+        detail["calories"] = round(nutrients.get("calories", 0) * factor)
+        detail["protein"] = round(nutrients.get("protein", 0) * factor, 1)
+        detail["fat"] = round(nutrients.get("fat", 0) * factor, 1)
+        detail["carbs"] = round(nutrients.get("carbs", 0) * factor, 1)
+        detail["quantity_grams"] = round(detail["quantity_grams"])
+
+
     return {"aggregated_meal": aggregated_meal, "deconstruction_details": deconstruction_details}
 
 

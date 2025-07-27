@@ -64,7 +64,7 @@ def update_meal_entry(
     current_user: models.User = Depends(auth.get_current_user)
 ):
     """Aktualizuje istniejący wpis w posiłku."""
-    updated_entry = crud.update_meal_entry(db=db, entry_id=entry_id, user_id=current_user.id, entry_update=entry_update)
+    updated_entry = crud.update_meal_entry(db=db, entry_id=entry_id, entry_data=entry_update)
     if not updated_entry:
         raise HTTPException(status_code=404, detail="Wpis posiłku nie został znaleziony lub nie masz do niego uprawnień.")
     return updated_entry

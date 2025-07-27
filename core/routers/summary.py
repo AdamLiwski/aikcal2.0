@@ -14,21 +14,34 @@ router = APIRouter(
     tags=["Podsumowanie Dnia"]
 )
 
+# W pliku core/routers/summary.py (WERSJA FINALNA)
+
 @router.get("/{target_date}", response_model=schemas.DailySummary)
 def get_daily_summary(
     target_date: date,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    """Pobiera pełne podsumowanie danych z wybranego dnia."""
+    """Pobiera pełne podsumowanie danych z wybranego dnia, wzbogacając dane do edycji."""
     meals = crud.get_meals_by_date(db, user_id=current_user.id, target_date=target_date)
-    # Pobieramy treningi za pomocą nowej funkcji CRUD
-    workouts = crud.get_workouts_by_date_range(db, user_id=current_user.id, start_date=target_date, end_date=target_date)
-    # Pobieramy wpisy o wodzie za pomocą nowej funkcji CRUD
-    water_entries = db.query(models.WaterEntry).filter(
-        models.WaterEntry.owner_id == current_user.id, 
-        func.date(models.WaterEntry.date) == target_date
-    ).all()
+    workouts = crud.get_workouts_by_date(db, user_id=current_user.id, target_date=target_date)
+    water_entries = crud.get_water_entries_by_date(db, user_id=current_user.id, target_date=target_date)
+
+    # --- POCZĄTEK NOWEJ LOGIKI: WZBOGACANIE DANYCH ---
+    for meal in meals:
+        for entry in meal.entries:
+            if entry.deconstruction_details:
+                enriched_details = []
+                for ingredient_detail in entry.deconstruction_details:
+                    # Szukamy produktu w naszej bazie, aby pobrać jego wartości bazowe
+                    product = crud.get_product_by_name(db, name=ingredient_detail.get("name"))
+                    if product:
+                        # Kopiujemy istniejące dane i dodajemy kluczową, brakującą informację
+                        new_detail = ingredient_detail.copy()
+                        new_detail["nutrients_per_100g"] = product.nutrients
+                        enriched_details.append(new_detail)
+                entry.deconstruction_details = enriched_details
+    # --- KONIEC NOWEJ LOGIKI ---
 
     calories_consumed = sum(e.calories for m in meals for e in m.entries)
     calories_burned = sum(w.calories_burned for w in workouts)
@@ -38,7 +51,6 @@ def get_daily_summary(
     if current_user.add_workout_calories_to_goal:
         effective_calorie_goal += calories_burned
 
-    # Obliczamy datę osiągnięcia celu
     goal_date = utils.calculate_goal_achievement_date(current_user)
 
     summary = schemas.DailySummary(
@@ -58,6 +70,6 @@ def get_daily_summary(
         meals=meals,
         water_entries=water_entries,
         workouts=workouts,
-        goal_achievement_date=goal_date # Dodajemy datę do odpowiedzi
+        goal_achievement_date=goal_date
     )
     return summary

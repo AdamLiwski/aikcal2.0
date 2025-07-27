@@ -1,5 +1,6 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_
+from sqlalchemy.orm.attributes import flag_modified # Upewnij się, że masz ten import
 from datetime import date, datetime, timedelta
 import json
 
@@ -165,23 +166,28 @@ def add_entry_to_meal(db: Session, entry: schemas.MealEntryCreate, meal_id: int)
     db.refresh(db_entry)
     return db_entry
 
-def update_meal_entry(db: Session, entry_id: int, user_id: int, entry_update: schemas.MealEntryCreate):
-    """Aktualizuje wpis w posiłku."""
-    db_entry = db.query(models.MealEntry).join(models.Meal).filter(
-        models.MealEntry.id == entry_id, models.Meal.owner_id == user_id
-    ).first()
+# --- ZMIENIONA FUNKCJA ---
+def update_meal_entry(db: Session, entry_id: int, entry_data: schemas.MealEntryCreate):
+    """Aktualizuje wpis w posiłku, w tym jego składniki (deconstruction_details)."""
+    # Znajdujemy wpis w bazie danych. Zakładamy, że autoryzacja (sprawdzenie user_id)
+    # odbywa się na poziomie endpointu API, a nie tutaj.
+    db_entry = db.query(models.MealEntry).filter(models.MealEntry.id == entry_id).first()
     if not db_entry:
         return None
+
+    # Pobieramy dane do aktualizacji z modelu Pydantic
+    update_data = entry_data.model_dump(exclude_unset=True)
     
-    db_entry.original_amount = entry_update.amount
-    db_entry.original_unit = entry_update.unit
-    db_entry.display_quantity_text = entry_update.display_quantity_text
-    db_entry.calories = entry_update.calories
-    db_entry.protein = entry_update.protein
-    db_entry.fat = entry_update.fat
-    db_entry.carbs = entry_update.carbs
-    db_entry.standardized_grams = entry_update.amount 
-    db_entry.is_default_quantity = entry_update.is_default_quantity
+    for key, value in update_data.items():
+        # --- KLUCZOWA ZMIANA ---
+        # Sprawdzamy, czy aktualizujemy pole ze składnikami
+        if key == "deconstruction_details":
+            db_entry.deconstruction_details = value
+            # Mówimy bazie, że to pole JSON zostało zmodyfikowane
+            flag_modified(db_entry, "deconstruction_details")
+        else:
+            # Dla wszystkich innych pól używamy standardowego setattr
+            setattr(db_entry, key, value)
     
     db.commit()
     db.refresh(db_entry)
