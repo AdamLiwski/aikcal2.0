@@ -1560,3 +1560,19 @@ html.dark .challenge-status.ukończone {
 .ingredient-weight-input {
     width: 75px; /* Ograniczenie szerokości pola */
 }
+
+/* Poprawka wyrównania przycisków w Dzienniku */
+.meal-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+}
+.meal-item .meal-info {
+    flex-grow: 1;
+}
+.meal-item .meal-actions {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    margin-left: 1rem;
+}

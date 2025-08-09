@@ -524,7 +524,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             return `
                 <div class="interactive-ingredients">
-                    <h4>Składniki:</h4>
                     ${ingredients.map((item, index) => {
                         const name = item.name || 'Nieznany składnik';
                         const weight = Math.round(item.quantity_grams || 0);
@@ -851,25 +850,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
             pristineRecipeData = ingredients;
 
+            // ### START OF REPLACEMENT 1 ###
             container.innerHTML = `
                 <div class="analysis-summary">
                     <div class="summary-header">
                         <span id="analysis-final-name">${meal.name}</span>
-                        <div class="total-weight-editor">
-                            (<input type="number" id="analysis-total-weight-input" class="total-weight-input" value="${Math.round(meal.quantity_grams)}">g)
-                        </div>
+                        <div class="total-weight-editor">(<input type="number" id="analysis-total-weight-input" value="${Math.round(meal.quantity_grams)}">g)</div>
                     </div>
                     <div class="summary-macros" id="analysis-macros-summary">${Math.round(meal.calories)} kcal &middot; B:${Math.round(meal.protein)} T:${Math.round(meal.fat)} W:${Math.round(meal.carbs)}</div>
                 </div>
-                <div class="ingredients-toggle open">
+                <div class="ingredients-toggle">
                     <span>Składniki</span>
                     <i data-feather="chevron-down" class="collapse-icon"></i>
                 </div>
-                <div class="meal-item-ingredients open">
+                <div class="meal-item-ingredients">
                     ${templates.interactiveIngredientList(ingredients, true)}
                 </div>
                 <input type="hidden" id="analysis-original-data" value='${JSON.stringify(result)}'>
             `;
+            // ### END OF REPLACEMENT 1 ###
 
             selectors.addMealModal.querySelector('.modal-footer').classList.remove('hidden');
             
@@ -877,10 +876,19 @@ document.addEventListener('DOMContentLoaded', () => {
             container.parentNode.replaceChild(newContainer, container);
 
             newContainer.addEventListener('input', (e) => {
-                if (e.target.classList.contains('total-weight-input') || e.target.classList.contains('ingredient-weight-input')) {
-                    handle.recalculateMacros(e.target);
+                if (e.target.classList.contains('total-weight-input') || e.target.classList.contains('ingredient-weight-input') || e.target.classList.contains('ingredient-checkbox')) {
+                    handle.recalculateMacros('analysis-original-data', e.target);
                 }
             });
+
+            // Listener for the new ingredients toggle
+            newContainer.querySelector('.ingredients-toggle')?.addEventListener('click', (e) => {
+                const toggle = e.currentTarget;
+                const ingredientsList = toggle.nextElementSibling;
+                toggle.classList.toggle('open');
+                ingredientsList.classList.toggle('open');
+            });
+
 
             featherReplace();
         },
@@ -1380,154 +1388,111 @@ document.addEventListener('DOMContentLoaded', () => {
                 }, 3000); // 3 sekundy ciszy
             };
         },
-        recalculateMacros: (triggerElement) => {
-            const container = triggerElement.closest('.modal-content');
-            if (!container) return;
+        // ### START OF REPLACEMENT 2 ###
+        recalculateMacros: (sourceElementId, triggerElement) => {
+            const sourceInput = $(`#${sourceElementId}`);
+            const container = sourceInput.closest('.modal-content');
+            if (!sourceInput || !container) return;
 
-            const sourceInput = container.querySelector('#analysis-original-data, #edit-original-data');
-            if (!sourceInput) return;
-            
+            // Zawsze bazuj na czystych, oryginalnych danych z momentu analizy
             const originalResult = JSON.parse(sourceInput.value);
+            const originalDeconstruction = originalResult.deconstruction_details || [];
             const ingredientsContainer = container.querySelector('.interactive-ingredients');
             if (!originalResult || !ingredientsContainer) return;
 
-            const originalDeconstruction = pristineRecipeData;
-
-            if (triggerElement.classList.contains('total-weight-input')) {
-                const newTotalWeight = parseFloat(triggerElement.value);
-                const baseRecipeWeight = originalDeconstruction.reduce((sum, item) => sum + (item.quantity_grams || 0), 0);
-
-                if (!isNaN(newTotalWeight) && newTotalWeight >= 0 && baseRecipeWeight > 0) {
-                    const factor = newTotalWeight / baseRecipeWeight;
-                    originalDeconstruction.forEach(originalIngredient => {
-                        const itemElement = Array.from(ingredientsContainer.querySelectorAll('.ingredient-item')).find(el => el.querySelector('.ingredient-name').textContent === originalIngredient.name);
-                        if (itemElement) {
-                            const weightInput = itemElement.querySelector('.ingredient-weight-input');
-                            weightInput.value = Math.round(originalIngredient.quantity_grams * factor);
-                        }
+            const baseTotalWeight = originalDeconstruction.reduce((sum, item) => sum + (item.quantity_grams || 0), 0);
+            
+            // Logika skalowania "w dół" - od wagi całkowitej do składników
+            if (triggerElement && triggerElement.id.includes('total-weight-input')) {
+                const newTotalWeight = parseFloat(triggerElement.value) || 0;
+                if (!isNaN(newTotalWeight) && newTotalWeight >= 0) {
+                    const totalWeightFactor = baseTotalWeight > 0 ? newTotalWeight / baseTotalWeight : 0;
+                    ingredientsContainer.querySelectorAll('.ingredient-item').forEach((itemElement, index) => {
+                        const weightInput = itemElement.querySelector('.ingredient-weight-input');
+                        const originalIngredientWeight = originalDeconstruction[index]?.quantity_grams || 0;
+                        weightInput.value = Math.round(originalIngredientWeight * totalWeightFactor);
                     });
                 }
             }
 
-            let totalCalories = 0, totalProtein = 0, totalFat = 0, totalCarbs = 0, newCalculatedTotalWeight = 0;
+            // Przeliczenie makro na podstawie aktualnych wartości w polach
+            let totalCalories = 0, totalProtein = 0, totalFat = 0, totalCarbs = 0, finalTotalWeight = 0;
+            const finalIngredients = [];
 
-            ingredientsContainer.querySelectorAll('.ingredient-item').forEach(itemElement => {
+            originalDeconstruction.forEach((originalItem, index) => {
+                const itemElement = ingredientsContainer.querySelector(`.ingredient-item[data-index="${index}"]`);
                 const checkbox = itemElement.querySelector('.ingredient-checkbox');
                 const weightInput = itemElement.querySelector('.ingredient-weight-input');
-
+                
                 if (checkbox && checkbox.checked && weightInput) {
-                    const currentWeight = parseFloat(weightInput.value) || 0;
-                    newCalculatedTotalWeight += currentWeight;
+                    const currentWeight = parseFloat(weightInput.value);
+                    if (!isNaN(currentWeight) && currentWeight >= 0) {
+                        finalTotalWeight += currentWeight;
+                        
+                        // Pobierz dane bazowe (na 100g) ze specjalnych atrybutów
+                        const kcalPer100g = parseFloat(itemElement.dataset.kcalPer100g) || 0;
+                        const proteinPer100g = parseFloat(itemElement.dataset.proteinPer100g) || 0;
+                        const fatPer100g = parseFloat(itemElement.dataset.fatPer100g) || 0;
+                        const carbsPer100g = parseFloat(itemElement.dataset.carbsPer100g) || 0;
 
-                    const kcalPer100g = parseFloat(itemElement.dataset.kcalPer100g) || 0;
-                    const proteinPer100g = parseFloat(itemElement.dataset.proteinPer100g) || 0;
-                    const fatPer100g = parseFloat(itemElement.dataset.fatPer100g) || 0;
-                    const carbsPer100g = parseFloat(itemElement.dataset.carbsPer100g) || 0;
+                        const factor = currentWeight / 100.0;
+                        const newCalories = kcalPer100g * factor;
+                        const newProtein = proteinPer100g * factor;
+                        const newFat = fatPer100g * factor;
+                        const newCarbs = carbsPer100g * factor;
 
-                    const factor = currentWeight / 100.0;
-                    totalCalories += kcalPer100g * factor;
-                    totalProtein += proteinPer100g * factor;
-                    totalFat += fatPer100g * factor;
-                    totalCarbs += carbsPer100g * factor;
+                        totalCalories += newCalories;
+                        totalProtein += newProtein;
+                        totalFat += newFat;
+                        totalCarbs += newCarbs;
+                        
+                        finalIngredients.push({ ...originalItem, name: originalItem.name, quantity_grams: currentWeight, calories: newCalories, protein: newProtein, fat: newFat, carbs: newCarbs });
+                    }
                 }
             });
-
-            if (triggerElement.classList.contains('ingredient-weight-input')) {
-                const totalWeightInput = container.querySelector('.total-weight-input');
-                if (totalWeightInput) {
-                    totalWeightInput.value = Math.round(newCalculatedTotalWeight);
-                }
+            
+            // Logika skalowania "w górę" - od składników do wagi całkowitej
+            if (triggerElement && !triggerElement.id.includes('total-weight-input')) {
+                const totalWeightInput = container.querySelector('#analysis-total-weight-input') || container.querySelector('#edit-total-weight-input');
+                if(totalWeightInput) totalWeightInput.value = Math.round(finalTotalWeight);
             }
 
-            const summaryElement = container.querySelector('#analysis-macros-summary');
-            if (summaryElement) {
-                summaryElement.textContent = `${Math.round(totalCalories)} kcal · B:${Math.round(totalProtein)} T:${Math.round(totalFat)} W:${Math.round(totalCarbs)}`;
-            }
-
+            container.querySelector('#analysis-macros-summary').textContent = `${Math.round(totalCalories)} kcal &middot; B:${Math.round(totalProtein)} T:${Math.round(totalFat)} W:${Math.round(totalCarbs)}`;
+            
+            // Zapisz zaktualizowane dane do ukrytego pola
             const finalDataForSaving = {
-                ...originalResult,
-                aggregated_meal: {
-                    ...originalResult.aggregated_meal,
-                    quantity_grams: newCalculatedTotalWeight,
-                    calories: totalCalories, protein: totalProtein,
-                    fat: totalFat, carbs: totalCarbs,
-                },
-                deconstruction_details: Array.from(ingredientsContainer.querySelectorAll('.ingredient-item')).map(itemEl => {
-                    const name = itemEl.querySelector('.ingredient-name').textContent;
-                    const weight = parseFloat(itemEl.querySelector('.ingredient-weight-input').value) || 0;
-                    const originalIng = pristineRecipeData.find(i => i.name === name) || {};
-                    return {...originalIng, quantity_grams: weight};
-                })
+                aggregated_meal: { ...originalResult.aggregated_meal, name: originalResult.aggregated_meal.name, quantity_grams: finalTotalWeight, calories: totalCalories, protein: totalProtein, fat: totalFat, carbs: totalCarbs },
+                deconstruction_details: finalIngredients
             };
             sourceInput.value = JSON.stringify(finalDataForSaving);
         },
+        // ### END OF REPLACEMENT 2 ###
         addSelectedToJournal: async (e) => {
             const category = selectors.addMealModal.dataset.currentCategory;
             const date = toISODate(state.currentDate);
-            const container = $('#analysis-results-container');
+
+            // Upewnij się, że przeliczamy makra ostatni raz przed wysłaniem
+            handle.recalculateMacros('analysis-original-data', $('#analysis-total-weight-input'));
             
-            // Przygotowanie danych do zapisu
-            const finalName = container.querySelector('#analysis-final-name').textContent;
-            const finalWeight = parseFloat(container.querySelector('.total-weight-input').value) || 0;
+            const finalData = JSON.parse($('#analysis-original-data').value);
+            const mealComponent = finalData.aggregated_meal;
             
-            let totalCalories = 0, totalProtein = 0, totalFat = 0, totalCarbs = 0;
-            const finalIngredients = [];
-
-            container.querySelectorAll('.ingredient-item').forEach(itemElement => {
-                const checkbox = itemElement.querySelector('.ingredient-checkbox');
-                if (checkbox && checkbox.checked) {
-                    const currentWeight = parseFloat(itemElement.querySelector('.ingredient-weight-input').value) || 0;
-                    const factor = currentWeight / 100.0;
-                    
-                    const kcalPer100g = parseFloat(itemElement.dataset.kcalPer100g) || 0;
-                    const proteinPer100g = parseFloat(itemElement.dataset.proteinPer100g) || 0;
-                    const fatPer100g = parseFloat(itemElement.dataset.fatPer100g) || 0;
-                    const carbsPer100g = parseFloat(itemElement.dataset.carbsPer100g) || 0;
-
-                    const ingredientCalories = kcalPer100g * factor;
-                    const ingredientProtein = proteinPer100g * factor;
-                    const ingredientFat = fatPer100g * factor;
-                    const ingredientCarbs = carbsPer100g * factor;
-
-                    totalCalories += ingredientCalories;
-                    totalProtein += ingredientProtein;
-                    totalFat += ingredientFat;
-                    totalCarbs += ingredientCarbs;
-
-                    finalIngredients.push({
-                        name: itemElement.querySelector('.ingredient-name').textContent,
-                        quantity_grams: currentWeight,
-                        display_quantity_text: `${Math.round(currentWeight)}g`,
-                        calories: ingredientCalories,
-                        protein: ingredientProtein,
-                        fat: ingredientFat,
-                        carbs: ingredientCarbs,
-                        nutrients_per_100g: {
-                            calories: kcalPer100g,
-                            protein: proteinPer100g,
-                            fat: fatPer100g,
-                            carbs: carbsPer100g
-                        }
-                    });
-                }
-            });
-
             let mealContainer = state.summary.meals.find(m => m.category === category);
             if (!mealContainer) {
                 mealContainer = await api.createMeal({ date: date, name: category, category: category, time: new Date().toTimeString().split(' ')[0] });
             }
 
             const entryData = {
-                product_name: finalName,
-                calories: totalCalories,
-                protein: totalProtein,
-                fat: totalFat,
-                carbs: totalCarbs,
-                amount: finalWeight,
+                product_name: mealComponent.name,
+                calories: mealComponent.calories,
+                protein: mealComponent.protein,
+                fat: mealComponent.fat,
+                carbs: mealComponent.carbs,
+                amount: mealComponent.quantity_grams,
                 unit: 'g',
-                display_quantity_text: `${Math.round(finalWeight)}g`,
-                deconstruction_details: finalIngredients,
-                is_default_quantity: false // Zawsze false, bo użytkownik mógł edytować
+                display_quantity_text: `${Math.round(mealComponent.quantity_grams)}g`,
+                deconstruction_details: finalData.deconstruction_details,
+                is_default_quantity: mealComponent.is_default_quantity
             };
             
             await api.addMealEntry(mealContainer.id, entryData);
@@ -1565,15 +1530,15 @@ document.addEventListener('DOMContentLoaded', () => {
             
             render.modal(modalTitle, modalContent, true, modal);
             
-            handle.recalculateMacros(modal.querySelector('.total-weight-input'));
+            handle.recalculateMacros('edit-original-data', modal.querySelector('.total-weight-input'));
             
             const container = modal.querySelector('#edit-meal-entry-modal-body');
             const newContainer = container.cloneNode(true);
             container.parentNode.replaceChild(newContainer, container);
             
             newContainer.addEventListener('input', (e) => {
-                 if (e.target.classList.contains('total-weight-input') || e.target.classList.contains('ingredient-weight-input')) {
-                    handle.recalculateMacros(e.target);
+                 if (e.target.classList.contains('total-weight-input') || e.target.classList.contains('ingredient-weight-input') || e.target.classList.contains('ingredient-checkbox')) {
+                    handle.recalculateMacros('edit-original-data', e.target);
                 }
             });
             
@@ -1582,17 +1547,18 @@ document.addEventListener('DOMContentLoaded', () => {
             saveBtn.parentNode.replaceChild(newSaveBtn, saveBtn);
 
             newSaveBtn.addEventListener('click', async () => {
+                handle.recalculateMacros('edit-original-data', newContainer.querySelector('.total-weight-input'));
                 const finalData = JSON.parse(newContainer.querySelector('#edit-original-data').value);
                 const mealComponent = finalData.aggregated_meal;
                 
                 const updatedEntryData = {
-                    product_name: mealComponent.product_name,
+                    product_name: mealComponent.product_name || mealComponent.name,
                     calories: mealComponent.calories, protein: mealComponent.protein,
                     fat: mealComponent.fat, carbs: mealComponent.carbs,
                     amount: mealComponent.quantity_grams, unit: 'g',
                     display_quantity_text: `${Math.round(mealComponent.quantity_grams)}g`,
                     deconstruction_details: finalData.deconstruction_details,
-                    is_default_quantity: mealComponent.is_default_quantity // Zachowaj to pole
+                    is_default_quantity: mealComponent.is_default_quantity
                 };
 
                 await api.updateMealEntry(entryData.id, updatedEntryData);
@@ -1629,6 +1595,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 updateData.protein_goal = Math.round((calories * proteinPerc / 100) / 4);
                 updateData.fat_goal = Math.round((calories * fatPerc / 100) / 9);
                 updateData.carb_goal = Math.round((calories * carbPerc / 100) / 4);
+                updateData.protein_goal_perc = proteinPerc;
+                updateData.fat_goal_perc = fatPerc;
+                updateData.carb_goal_perc = carbPerc;
+
             } else if (activeTab === 'tab-tastes') {
                 const prefs = { proteins: [], carbs: [], fats: [] };
                 modal.querySelectorAll('.sortable-list').forEach(list => {

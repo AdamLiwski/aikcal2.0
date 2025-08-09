@@ -45,7 +45,39 @@ async def _get_ai_response(prompt: str, image: Optional[Image.Image] = None) -> 
 # --- NOWA, GŁÓWNA LOGIKA ANALIZY POSIŁKÓW ---
 
 async def analyze_meal_entry(text: Optional[str] = None, image_base64: Optional[str] = None) -> Optional[Dict[str, Any]]:
-    """
+    """Główna, wieloetapowa funkcja do analizy posiłku, działająca w logice "Cache-First"."""
+    if not text and not image_base64: return None
+
+    db = SessionLocal()
+    try:
+        parsed_query = await _parse_user_query(text, image_base64)
+        if not parsed_query or not parsed_query.get("name"): return None
+
+        product_name = parsed_query["name"]
+        quantity = parsed_query["quantity"]
+        unit = parsed_query["unit"]
+        
+        db_dish = crud.get_dish_by_name(db, name=product_name)
+        if db_dish:
+            print(f"DEBUG: Cache HIT (Dish)! Znaleziono '{product_name}' w bazie dań.")
+            return await _calculate_nutrients_for_dish(db, db_dish, quantity, unit)
+        
+        db_product = crud.get_product_by_name(db, name=product_name)
+        if db_product:
+            print(f"DEBUG: Cache HIT (Product)! Znaleziono '{product_name}' w bazie produktów.")
+            # KLUCZOWA POPRAWKA: Przekazujemy tylko 3 argumenty, bez `db`.
+            return _calculate_nutrients_for_product(db_product, quantity, unit)
+
+        print(f"DEBUG: Cache MISS! Uruchamiam mechanizm uczenia dla '{product_name}'.")
+        return await _learn_new_dish(db, product_name, quantity, unit)
+    except Exception as e:
+        # Dodajemy szczegółowy wydruk błędu do logów serwera
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Błąd podczas analizy posiłku: {e}")
+    finally:
+        db.close()
+        """
     Główna, wieloetapowa funkcja do analizy posiłku, działająca w logice "Cache-First".
     """
     if not text and not image_base64:
